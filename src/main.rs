@@ -4,58 +4,48 @@ use std::path::Path;
 use std::process::Command;
 use vec3_rs::{self, Vector3};
 
-struct Color {
-    r: u32,
-    g: u32,
-    b: u32,
-}
-
 struct Ray {
     origin: Vector3<f64>,
     direction: Vector3<f64>,
 }
 
 impl Ray {
-    // fn to(&self, &t: &f64) -> Vector3<f64> {
-    //     self.origin + self.direction * t
-    // }
+    // Ray to given t
+    fn to(&self, &t: &f64) -> Vector3<f64> {
+        self.origin + self.direction * t
+    }
 
     // Sphere intersection formula
-    fn hitsphere(centre: Vector3<f64>, radius: f64, ray: &Ray) -> bool {
+    fn hitsphere(centre: Vector3<f64>, radius: f64, ray: &Ray) -> f64 {
         let oc = centre - ray.origin;
         let a = ray.direction.dot(&ray.direction);
         let b = -2.0 * oc.dot(&ray.direction);
         let c = oc.dot(&oc) - radius * radius;
-        ((b * b - 4.0 * a * c) > 0.0) as bool
+        let discriminant = b * b - 4.0 * a * c;
+
+        // (discriminant >= 0.0) as bool
+        if discriminant < 0.0 {
+            return -1.0;
+        } else {
+            return (-b - discriminant.sqrt()) / (2.0 * a);
+        }
     }
 
     // Get color from raytrace
-    fn coltrace(&mut self) -> Color {
+    fn coltrace(&self) -> Vector3<f64> {
         // Hardcoded spheres in world
-        if Self::hitsphere(Vector3::new(0.0, 0.0, 1.0), 0.5, &self) {
-            return Color {
-                r: 255,
-                g: 0,
-                b: 255,
-            };
-        } else if Self::hitsphere(Vector3::new(0.7, -0.5, -2.25), 0.5, &self) {
-            return Color {
-                r: 255,
-                g: 255,
-                b: 0,
-            };
+        let t = Self::hitsphere(Vector3::new(0.0, 0.0, -1.0), 0.5, self);
+        if t > 0.0 {
+            let nd = self.to(&t) - Vector3::new(0.0, 0.0, 1.0);
+            let n = nd / nd.magnitude();
+            return Vector3::new(n.get_x() + 1.0, n.get_y() + 1.0, n.get_z() + 1.0) * 255.999 * 1.5;
         }
 
         // "Sky" gradient
-        self.direction.normalize();
-        let lerpval = 0.5 * (self.direction.get_y() + 1.0);
-        let colvec = Vector3::new(255.0, 255.0, 255.0) * (1.0 - lerpval)
-            + Vector3::new(0.0, 0.0, 0.0) * lerpval;
-        Color {
-            r: colvec.get_x() as u32,
-            g: colvec.get_y() as u32,
-            b: colvec.get_z() as u32,
-        }
+        let normdir = self.direction / self.direction.magnitude();
+        let lerpval = 0.5 * (-normdir.get_y() + 1.0);
+        Vector3::new(70.0, 100.0, 255.0) * (1.0 - lerpval)
+            + Vector3::new(255.0, 255.0, 255.0) * lerpval
     }
 }
 
@@ -100,14 +90,14 @@ fn main() {
             // For every pixel, get ray, eval color, construct and append rgb value to out
             let pixelloc = pixel0loc + (deltadown * y as f64) + (deltaright * x as f64);
             let raydir = pixelloc - camorigin;
-            let mut currray = Ray {
+            let currray = Ray {
                 origin: camorigin,
                 direction: raydir,
             };
             let pixel = construct_pixel(currray.coltrace());
             out_str.push_str(&pixel);
         }
-        let completed = y as f64 / xlen as f64 * 100.0;
+        let completed = y as f64 / ylen as f64 * 100.0;
         println!("Rendered: {:.2}%", completed)
     }
 
@@ -122,8 +112,13 @@ fn main() {
     open_ppm(&display.to_string());
 }
 
-fn construct_pixel(c: Color) -> String {
-    format!("{} {} {}\n", c.r, c.g, c.b)
+fn construct_pixel(c: Vector3<f64>) -> String {
+    format!(
+        "{} {} {}\n",
+        c.get_x() as u32,
+        c.get_y() as u32,
+        c.get_z() as u32
+    )
 }
 
 fn open_ppm(file: &String) {
