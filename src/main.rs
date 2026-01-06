@@ -9,43 +9,119 @@ struct Ray {
     direction: Vector3<f64>,
 }
 
+struct Sphere {
+    centre: Vector3<f64>,
+    radius: f64,
+}
+
+struct HittableList {
+    hittables: Vec<Box<dyn Hittable>>,
+}
+
+struct Hit {
+    pos: Vector3<f64>,
+    normal: Vector3<f64>,
+    t: f64,
+    frontface: bool,
+}
+
+trait Hittable {
+    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit>;
+}
+
 impl Ray {
     // Ray to given t
     fn to(&self, &t: &f64) -> Vector3<f64> {
         self.origin + self.direction * t
     }
 
-    // Sphere intersection formula
-    fn hitsphere(centre: Vector3<f64>, radius: f64, ray: &Ray) -> f64 {
-        let oc = centre - ray.origin;
-        let a = ray.direction.dot(&ray.direction);
-        let b = -2.0 * oc.dot(&ray.direction);
-        let c = oc.dot(&oc) - radius * radius;
-        let discriminant = b * b - 4.0 * a * c;
+    // Get color from raytrace
+    fn coltrace(&self, hittables: &HittableList) -> Vector3<f64> {
+        // Return color if ray hits something
+        match hittables.hit(&self, &0.0, &999.0) {
+            Some(hitrec) => return hitrec.normal * Vector3::new(255.0, 255.0, 255.0),
+            None => {}
+        }
+
+        // Otherwise return "sky" gradient
+        let normdir = self.direction / self.direction.magnitude();
+        let lerpval = 0.5 * (-normdir.get_y() + 1.0);
+        return Vector3::new(70.0, 100.0, 255.0) * (1.0 - lerpval)
+            + Vector3::new(255.0, 255.0, 255.0) * lerpval;
+    }
+}
+
+impl Hit {
+    fn setfacenormal(&mut self, ray: &Ray, outnorm: Vector3<f64>) {
+        // Outward normal vector should be normalized
+        self.frontface = ray.direction.dot(&outnorm) < 0.0;
+        self.normal = if self.frontface {
+            outnorm
+        } else {
+            outnorm * -1.0
+        };
+    }
+}
+
+impl Hittable for HittableList {
+    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit> {
+        let mut temprec: Hit = Hit {
+            pos: Vector3::new(0.0, 0.0, 0.0),
+            normal: Vector3::new(0.0, 0.0, 0.0),
+            t: 0.0,
+            frontface: true,
+        };
+        let mut closest: &f64 = raytmax;
+
+        for object in &self.hittables {
+            match object.hit(&ray, raytmin, closest) {
+                Some(hitrec) => {
+                    temprec = hitrec;
+                    closest = &temprec.t;
+                }
+                None => return None,
+            };
+        }
+
+        return Some(temprec);
+    }
+}
+
+impl Hittable for Sphere {
+    // Calculate if given ray hit self, provide hitrec
+    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit> {
+        let oc = self.centre - ray.origin;
+        let a = ray.direction.magnitude() * ray.direction.magnitude();
+        let h = ray.direction.dot(&oc);
+        let c = oc.magnitude() * oc.magnitude() - self.radius * self.radius;
+        let discriminant = h * h - a * c;
 
         // (discriminant >= 0.0) as bool
         if discriminant < 0.0 {
-            return -1.0;
-        } else {
-            return (-b - discriminant.sqrt()) / (2.0 * a);
-        }
-    }
-
-    // Get color from raytrace
-    fn coltrace(&self) -> Vector3<f64> {
-        // Hardcoded spheres in world
-        let t = Self::hitsphere(Vector3::new(0.0, 0.0, -1.0), 0.5, self);
-        if t > 0.0 {
-            let nd = self.to(&t) - Vector3::new(0.0, 0.0, 1.0);
-            let n = nd / nd.magnitude();
-            return Vector3::new(n.get_x() + 1.0, n.get_y() + 1.0, n.get_z() + 1.0) * 255.999 * 1.5;
+            return None;
         }
 
-        // "Sky" gradient
-        let normdir = self.direction / self.direction.magnitude();
-        let lerpval = 0.5 * (-normdir.get_y() + 1.0);
-        Vector3::new(70.0, 100.0, 255.0) * (1.0 - lerpval)
-            + Vector3::new(255.0, 255.0, 255.0) * lerpval
+        let sqrtd = discriminant.sqrt();
+
+        let mut root = (h - sqrtd) / a;
+        if &root <= raytmin || raytmax <= &root {
+            root = (h + sqrtd) / a;
+            if &root <= raytmin || raytmax <= &root {
+                return None;
+            }
+        }
+
+        let pos = ray.to(&root);
+        let normal = (pos - self.centre) / self.radius;
+        let mut hitrec = Hit {
+            t: root,
+            pos,
+            normal,
+            frontface: false,
+        };
+        hitrec.setfacenormal(ray, normal);
+
+        return Some(hitrec);
     }
 }
 
@@ -82,6 +158,15 @@ fn main() {
         Ok(file) => file,
     };
 
+    // World objects
+    let mut world = HittableList {
+        hittables: Vec::new(),
+    };
+    world.hittables.push(Box::new(Sphere {
+        centre: Vector3::new(0.0, 0.0, -1.0),
+        radius: 0.5,
+    }));
+
     // Generate string for ppm file
     let mut out_str = String::new();
     out_str.push_str(&format!("P3\n{} {}\n255\n", xlen, ylen));
@@ -94,7 +179,7 @@ fn main() {
                 origin: camorigin,
                 direction: raydir,
             };
-            let pixel = construct_pixel(currray.coltrace());
+            let pixel = construct_pixel(currray.coltrace(&world));
             out_str.push_str(&pixel);
         }
         let completed = y as f64 / ylen as f64 * 100.0;
