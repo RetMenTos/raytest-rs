@@ -39,7 +39,9 @@ impl Ray {
     fn coltrace(&self, hittables: &HittableList) -> Vector3<f64> {
         // Return color if ray hits something
         match hittables.hit(&self, &0.0, &999.0) {
-            Some(hitrec) => return hitrec.normal * Vector3::new(255.0, 255.0, 255.0),
+            Some(hitrec) => {
+                return colorize(hitrec.normal);
+            }
             None => {}
         }
 
@@ -65,25 +67,20 @@ impl Hit {
 
 impl Hittable for HittableList {
     fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit> {
-        let mut temprec: Hit = Hit {
-            pos: Vector3::new(0.0, 0.0, 0.0),
-            normal: Vector3::new(0.0, 0.0, 0.0),
-            t: 0.0,
-            frontface: true,
-        };
-        let mut closest: &f64 = raytmax;
+        let mut temprec: Option<Hit> = None;
+        let mut closest: f64 = *raytmax;
 
         for object in &self.hittables {
-            match object.hit(&ray, raytmin, closest) {
+            match object.hit(&ray, raytmin, &closest) {
                 Some(hitrec) => {
-                    temprec = hitrec;
-                    closest = &temprec.t;
+                    closest = hitrec.t;
+                    temprec = Some(hitrec);
                 }
-                None => return None,
+                None => {}
             };
         }
 
-        return Some(temprec);
+        return temprec;
     }
 }
 
@@ -166,6 +163,14 @@ fn main() {
         centre: Vector3::new(0.0, 0.0, -1.0),
         radius: 0.5,
     }));
+    world.hittables.push(Box::new(Sphere {
+        centre: Vector3::new(2.0, 2.0, -2.0),
+        radius: 1.0,
+    }));
+    world.hittables.push(Box::new(Sphere {
+        centre: Vector3::new(0.0, -100.5, -1.0),
+        radius: 100.0,
+    }));
 
     // Generate string for ppm file
     let mut out_str = String::new();
@@ -195,6 +200,14 @@ fn main() {
 
     // Debug: open in kitten icat
     open_ppm(&display.to_string());
+}
+
+fn colorize(colorin: Vector3<f64>) -> Vector3<f64> {
+    return Vector3::new(
+        colorin.get_x() * 255.999,
+        colorin.get_y() * 255.999,
+        colorin.get_z() * 255.999,
+    );
 }
 
 fn construct_pixel(c: Vector3<f64>) -> String {
