@@ -14,6 +14,12 @@ struct Sphere {
     radius: f64,
 }
 
+struct Tri {
+    a: Vector3<f64>,
+    b: Vector3<f64>,
+    c: Vector3<f64>,
+}
+
 struct HittableList {
     hittables: Vec<Box<dyn Hittable>>,
 }
@@ -117,8 +123,41 @@ impl Hittable for Sphere {
             frontface: false,
         };
         hitrec.setfacenormal(ray, normal);
-
         return Some(hitrec);
+    }
+}
+
+impl Hittable for Tri {
+    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit> {
+        let e1 = self.b - self.a;
+        let e2 = self.c - self.a;
+        let normal = e1.cross(&e2);
+        let det = ray.direction.dot(&normal) * -1.0;
+
+        if det != 0.0 {
+            let invdet = 1.0 / det;
+            let ao = ray.origin - self.a;
+            let dao = ao.cross(&ray.direction);
+            let u = invdet * e2.dot(&dao);
+            let v = e1.dot(&dao) * -1.0 * invdet;
+            let t = normal.dot(&ao) * invdet;
+            if t < *raytmin || t >= *raytmax {
+                return None;
+            }
+
+            if det < 0.0 && u > 0.0 && v > 0.0 && t > 0.0 && (u + v) < 1.0 {
+                let pos = ray.origin + ray.direction * t;
+                let mut hitrec = Hit {
+                    pos,
+                    normal,
+                    t,
+                    frontface: false,
+                };
+                hitrec.setfacenormal(ray, normal);
+                return Some(hitrec);
+            }
+        }
+        return None;
     }
 }
 
@@ -171,6 +210,16 @@ fn main() {
         centre: Vector3::new(0.0, -100.5, -1.0),
         radius: 100.0,
     }));
+    world.hittables.push(Box::new(Tri {
+        a: Vector3::new(-3.0, 2.0, -2.0),
+        b: Vector3::new(0.0, 1.0, -2.0),
+        c: Vector3::new(0.0, 0.0, -0.2),
+    }));
+    world.hittables.push(Box::new(Tri {
+        a: Vector3::new(0.0, 1.0, -2.0),
+        b: Vector3::new(3.0, 2.0, -2.0),
+        c: Vector3::new(0.0, 0.0, -0.2),
+    }));
 
     // Generate string for ppm file
     let mut out_str = String::new();
@@ -179,7 +228,8 @@ fn main() {
         for x in 0..xlen {
             // For every pixel, get ray, eval color, construct and append rgb value to out
             let pixelloc = pixel0loc + (deltadown * y as f64) + (deltaright * x as f64);
-            let raydir = pixelloc - camorigin;
+            let mut raydir = pixelloc - camorigin;
+            raydir.normalize();
             let currray = Ray {
                 origin: camorigin,
                 direction: raydir,
