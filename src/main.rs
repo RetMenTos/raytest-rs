@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 use vec3_rs::{self, Vector3};
 
-struct Ray {
+pub struct Ray {
     origin: Vector3<f64>,
     direction: Vector3<f64>,
 }
@@ -31,8 +31,27 @@ struct Hit {
     frontface: bool,
 }
 
+struct Interval {
+    min: f64,
+    max: f64,
+}
+
+impl Interval {
+    fn size(&self) -> f64 {
+        self.max - self.min
+    }
+
+    fn contains(&self, val: f64) -> bool {
+        self.min <= val && val <= self.max
+    }
+
+    fn surrounds(&self, val: f64) -> bool {
+        self.min < val && val < self.max
+    }
+}
+
 trait Hittable {
-    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit>;
+    fn hit(&self, ray: &Ray, raytminmax: &Interval) -> Option<Hit>;
 }
 
 impl Ray {
@@ -44,7 +63,13 @@ impl Ray {
     // Get color from raytrace
     fn coltrace(&self, hittables: &HittableList) -> Vector3<f64> {
         // Return color if ray hits something
-        match hittables.hit(&self, &0.0, &999.0) {
+        match hittables.hit(
+            &self,
+            &Interval {
+                min: 0.0,
+                max: f64::INFINITY,
+            },
+        ) {
             Some(hitrec) => {
                 return colorize(hitrec.normal);
             }
@@ -72,12 +97,18 @@ impl Hit {
 }
 
 impl Hittable for HittableList {
-    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, raytminmax: &Interval) -> Option<Hit> {
         let mut temprec: Option<Hit> = None;
-        let mut closest: f64 = *raytmax;
+        let mut closest: f64 = raytminmax.max;
 
         for object in &self.hittables {
-            match object.hit(&ray, raytmin, &closest) {
+            match object.hit(
+                &ray,
+                &Interval {
+                    min: raytminmax.min.clone(),
+                    max: closest.clone(),
+                },
+            ) {
                 Some(hitrec) => {
                     closest = hitrec.t;
                     temprec = Some(hitrec);
@@ -92,14 +123,13 @@ impl Hittable for HittableList {
 
 impl Hittable for Sphere {
     // Calculate if given ray hit self, provide hitrec
-    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, raytminmax: &Interval) -> Option<Hit> {
         let oc = self.centre - ray.origin;
         let a = ray.direction.magnitude() * ray.direction.magnitude();
         let h = ray.direction.dot(&oc);
         let c = oc.magnitude() * oc.magnitude() - self.radius * self.radius;
         let discriminant = h * h - a * c;
 
-        // (discriminant >= 0.0) as bool
         if discriminant < 0.0 {
             return None;
         }
@@ -107,11 +137,10 @@ impl Hittable for Sphere {
         let sqrtd = discriminant.sqrt();
 
         let mut root = (h - sqrtd) / a;
-        if &root <= raytmin || raytmax <= &root {
+        if raytminmax.contains(root) {
             root = (h + sqrtd) / a;
-            if &root <= raytmin || raytmax <= &root {
-                return None;
-            }
+        } else {
+            return None;
         }
 
         let pos = ray.to(&root);
@@ -128,7 +157,7 @@ impl Hittable for Sphere {
 }
 
 impl Hittable for Tri {
-    fn hit(&self, ray: &Ray, raytmin: &f64, raytmax: &f64) -> Option<Hit> {
+    fn hit(&self, ray: &Ray, raytminmax: &Interval) -> Option<Hit> {
         let e1 = self.b - self.a;
         let e2 = self.c - self.a;
         let normal = e1.cross(&e2);
@@ -141,7 +170,7 @@ impl Hittable for Tri {
             let u = invdet * e2.dot(&dao);
             let v = e1.dot(&dao) * -1.0 * invdet;
             let t = normal.dot(&ao) * invdet;
-            if t < *raytmin || t >= *raytmax {
+            if !raytminmax.contains(t) {
                 return None;
             }
 
@@ -163,7 +192,7 @@ impl Hittable for Tri {
 
 fn main() {
     // Image dimensions
-    let xlen: u32 = 1600;
+    let xlen: u32 = 1280;
     let aratio: f64 = 16.0 / 9.0;
     let ylen = (xlen as f64 / aratio).ceil() as u32;
 
@@ -238,10 +267,11 @@ fn main() {
             out_str.push_str(&pixel);
         }
         let completed = y as f64 / ylen as f64 * 100.0;
-        println!("Rendered: {:.2}%", completed)
+        print!("\rRendered: {:.2}%", completed);
+        let _ = std::io::stdout().flush();
     }
 
-    println!("Done!");
+    println!("\nDone!");
     // write to ppm file and open
     match img_file.write_all(out_str.as_bytes()) {
         Err(why) => panic!("File write failed, {}, {}", display, why),
