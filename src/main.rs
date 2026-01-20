@@ -137,10 +137,11 @@ impl Hittable for Sphere {
         let sqrtd = discriminant.sqrt();
 
         let mut root = (h - sqrtd) / a;
-        if raytminmax.contains(root) {
+        if !raytminmax.contains(root) {
             root = (h + sqrtd) / a;
-        } else {
-            return None;
+            if !raytminmax.contains(root) {
+                return None;
+            }
         }
 
         let pos = ray.to(&root);
