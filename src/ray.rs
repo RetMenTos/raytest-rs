@@ -34,7 +34,7 @@ impl Ray {
         // Otherwise return "sky" gradient
         let normdir = self.direction / self.direction.magnitude();
         let lerpval = 0.5 * (-normdir.get_y() + 1.0);
-        return Vector3::new(70.0, 100.0, 255.0) * (1.0 - lerpval)
+        return Vector3::new(0.0, 100.0, 255.0) * (1.0 - lerpval)
             + Vector3::new(255.0, 255.0, 255.0) * lerpval;
     }
 }

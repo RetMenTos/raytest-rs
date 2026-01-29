@@ -7,3 +7,12 @@ pub fn colorize(colorin: Vector3<f64>) -> Vector3<f64> {
         colorin.get_z() * 255.999,
     );
 }
+
+pub fn construct_pixel(c: Vector3<f64>) -> String {
+    format!(
+        "{} {} {}\n",
+        c.get_x() as u32,
+        c.get_y() as u32,
+        c.get_z() as u32
+    )
+}
